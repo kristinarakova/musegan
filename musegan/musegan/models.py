@@ -51,6 +51,7 @@ class GAN(Model):
         data_shape = (self.config['batch_size'], self.config['num_bar'],
                       self.config['num_timestep'], self.config['num_pitch'],
                       self.config['num_track'])
+        self.y = tf.placeholder(tf.bool, (self.config['batch_size'], 1), 'y')
         self.x = tf.placeholder(tf.bool, data_shape, 'x')
         self.x_ = tf.cast(self.x, tf.float32, 'x_')
 
@@ -64,7 +65,7 @@ class GAN(Model):
         self.components = (self.G, self.D_fake)
 
         # Losses
-        self.g_loss, self.d_loss = self.get_adversarial_loss(Discriminator)
+        self.g_loss, self.d_loss, self.class_loss = self.get_adversarial_loss(Discriminator)
 
         # Optimizers
         with tf.variable_scope('Optimizer'):
@@ -97,17 +98,37 @@ class GAN(Model):
         self.print_summary()
         self.save_summary()
 
-    def train(self, x_train, train_config):
+    def train(self, x_train, y_train, train_config):
         """Train the model."""
         # Initialize sampler
-        self.x_sample = x_train[np.random.choice(
-            len(x_train), self.config['batch_size'], False)]
-        feed_dict_sample = {self.x: self.x_sample}
+        sample_idx = np.random.choice(len(x_train), self.config['batch_size'], False)
+        self.y_sample = y_train[sample_idx, None]
+        self.x_sample = x_train[sample_idx]
+        feed_dict_sample_neg = {self.x: self.x_sample, self.y: self.y_sample}
+        feed_dict_sample_pos = {self.x: self.x_sample, self.y: self.y_sample}
 
-        self.z_sample = {}
+        self.z_sample_pos = {}
+        self.z_sample_neg = {}
         for key in self.z:
-            self.z_sample[key] = np.random.normal(size=self.z[key].get_shape())
-            feed_dict_sample[self.z[key]] = self.z_sample[key]
+            z_random_sample = np.random.normal(size=self.z[key].get_shape())
+            self.z_sample_pos[key] = z_random_sample
+            self.z_sample_neg[key] = z_random_sample
+
+        self.z_sample_pos['shared'][:, -1] = 1
+        self.z_sample_pos['temporal_shared'][:, -1] = 1
+        for track in range(self.config['num_track']):
+            self.z_sample_pos['temporal_private'][:, -1, track] = 1
+            self.z_sample_pos['private'][:, -1, track] = 1
+
+        self.z_sample_neg['shared'][:, -1] = 0
+        self.z_sample_neg['temporal_shared'][:, -1] = 0
+        for track in range(self.config['num_track']):
+            self.z_sample_neg['temporal_private'][:, -1, track] = 0
+            self.z_sample_neg['private'][:, -1, track] = 0
+
+        for key in self.z:
+            feed_dict_sample_pos[self.z[key]] = self.z_sample_pos[key]
+            feed_dict_sample_neg[self.z[key]] = self.z_sample_neg[key]
 
         # Save samples
         self.save_samples('x_train', x_train, save_midi=True)
@@ -137,13 +158,25 @@ class GAN(Model):
             for key in self.z:
                 z_random_batch[key] = np.random.normal(
                     size=([num_batch] + self.z[key].get_shape().as_list()))
+
             x_random_batch = np.random.choice(
                 len(x_train), (num_batch, self.config['batch_size']), False)
 
             # Start batch iteration
             for batch in range(num_batch):
+                y_train_batch = y_train[x_random_batch[batch], None]
+                feed_dict_batch = {
+                    self.x: x_train[x_random_batch[batch]],
+                    self.y: y_train_batch
+                }
 
-                feed_dict_batch = {self.x: x_train[x_random_batch[batch]]}
+                # Add classes labels to latent vectors
+                z_random_batch['shared'][batch][:, -1] = y_train_batch.ravel()
+                z_random_batch['temporal_shared'][batch][:, -1] = y_train_batch.ravel()
+                for track in range(self.config['num_track']):
+                    z_random_batch['temporal_private'][batch][:, -1, track] = y_train_batch.ravel()
+                    z_random_batch['private'][batch][:, -1, track] = y_train_batch.ravel()
+
                 for key in self.z:
                     feed_dict_batch[self.z[key]] = z_random_batch[key][batch]
 
@@ -162,8 +195,8 @@ class GAN(Model):
                         self.get_global_step_str(), -d_loss
                     ))
 
-                _, d_loss, g_loss = self.sess.run(
-                    [self.g_step, self.d_loss, self.g_loss], feed_dict_batch
+                _, d_loss, g_loss, class_loss = self.sess.run(
+                    [self.g_step, self.d_loss, self.g_loss, self.class_loss], feed_dict_batch
                 )
                 log_step.write("{}, {:14.6f}\n".format(
                     self.get_global_step_str(), -d_loss
@@ -175,32 +208,43 @@ class GAN(Model):
                 if train_config['verbose']:
                     if batch < 1:
                         print("epoch |   batch   |  time  |    - D_loss    |"
-                              "     G_loss")
+                              "     G_loss    |  CrossEntr  ")
                     print("  {:2d}  | {:4d}/{:4d} | {:6.2f} | {:14.6f} | "
-                          "{:14.6f}".format(epoch, batch, num_batch, time_batch,
-                                            -d_loss, g_loss))
+                          "{:14.6f} | {:14.3f} |".format(epoch, batch, num_batch, time_batch,
+                                            -d_loss, g_loss, class_loss))
 
-                log_batch.write("{:d}, {:d}, {:f}, {:f}, {:f}\n".format(
-                    epoch, batch, time_batch, -d_loss, g_loss
+                log_batch.write("{:d}, {:d}, {:f}, {:f}, {:f}, {:f}\n".format(
+                    epoch, batch, time_batch, -d_loss, g_loss, class_loss
                 ))
 
                 # run sampler
                 if train_config['sample_along_training']:
                     if counter%100 == 0 or (counter < 300 and counter%20 == 0):
-                        self.run_sampler(self.G.tensor_out, feed_dict_sample,
-                                         False)
-                        self.run_sampler(self.test_round, feed_dict_sample,
-                                         (counter > 500), postfix='test_round')
-                        self.run_sampler(self.test_bernoulli, feed_dict_sample,
+                        self.run_sampler(self.G.tensor_out, feed_dict_sample_pos,
+                                         False, postfix='pos')
+                        self.run_sampler(self.G.tensor_out, feed_dict_sample_neg,
+                                         False, postfix='neg')
+                        self.run_sampler(self.test_round, feed_dict_sample_neg,
+                                         (counter > 500), postfix='test_round_neg')
+                        self.run_sampler(self.test_round, feed_dict_sample_pos,
+                                         (counter > 500), postfix='test_round_pos')
+                        self.run_sampler(self.test_bernoulli, feed_dict_sample_neg,
                                          (counter > 500),
-                                         postfix='test_bernoulli')
+                                         postfix='test_bernoulli_neg')
+                        self.run_sampler(self.test_bernoulli, feed_dict_sample_pos,
+                                         (counter > 500),
+                                         postfix='test_bernoulli_pos')
 
                 # run evaluation
                 if train_config['evaluate_along_training']:
                     if counter%10 == 0:
-                        self.run_eval(self.test_round, feed_dict_sample,
+                        self.run_eval(self.test_round, feed_dict_sample_pos,
                                       postfix='test_round')
-                        self.run_eval(self.test_bernoulli, feed_dict_sample,
+                        self.run_eval(self.test_round, feed_dict_sample_neg,
+                                      postfix='test_round')
+                        self.run_eval(self.test_bernoulli, feed_dict_sample_pos,
+                                      postfix='test_bernoulli')
+                        self.run_eval(self.test_bernoulli, feed_dict_sample_neg,
                                       postfix='test_bernoulli')
 
                 counter += 1
