@@ -105,6 +105,7 @@ class Generator(Component):
                 z_input.append(tf.concat(to_concat, -1))
 
             # Bar generators
+            # print(nets['temporal_private'][idx].tensor_out.get_shape())
             nets['bar_main'] = [
                 NeuralNet(z_input[idx], config['net_g']['bar_main'],
                           name='bar_main_'+str(idx))
@@ -146,7 +147,7 @@ class Discriminator(Component):
         super().__init__(tensor_in, condition)
         with tf.variable_scope(name, reuse=reuse) as scope:
             self.scope = scope
-            self.tensor_out, self.nets = self.build(config)
+            self.tensor_out, self.classes_proba, self.nets = self.build(config)
             self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                           self.scope.name)
 
@@ -215,4 +216,8 @@ class Discriminator(Component):
         nets['merged'] = NeuralNet(concated, config['net_d']['merged'],
                                    name='merged')
 
-        return nets['merged'].tensor_out, nets
+        nets['real_fake'] = NeuralNet(nets['merged'].tensor_out, 
+            config['net_d']['real_fake'], name='real_fake')
+        nets['classes'] = NeuralNet(nets['merged'].tensor_out,
+            config['net_d']['classes'], name='classes')
+        return nets['real_fake'].tensor_out, nets['classes'].tensor_out, nets
