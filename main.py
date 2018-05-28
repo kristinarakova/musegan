@@ -1,6 +1,7 @@
 """Train the model
 """
 import importlib
+import os
 import numpy as np
 import tensorflow as tf
 from config import CONFIG
@@ -43,6 +44,7 @@ def main():
 
     # Load training data
     x_train = load_data()
+    y_train = np.random.randint(0, 2, size=x_train.shape[0])
 
     # Open TensorFlow session
     with tf.Session(config=CONFIG['tensorflow']) as sess:
@@ -61,7 +63,7 @@ def main():
                 gan.load_latest(CONFIG['exp']['pretrained_dir'])
 
             # Train the model
-            gan.train(x_train, CONFIG['train'])
+            gan.train(x_train, y_train, CONFIG['train'])
 
         # =========================== BinaryMuseGAN ============================
         elif CONFIG['exp']['model'] == 'bmusegan':
