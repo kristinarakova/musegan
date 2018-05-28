@@ -27,6 +27,7 @@ class Component(object):
 
         self.scope = None
         self.tensor_out = tensor_in
+        self.classes_proba = None
         self.nets = OrderedDict()
         self.vars = None
 
