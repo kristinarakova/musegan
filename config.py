@@ -30,7 +30,7 @@ SETUP = {
     # {'musegan', 'bmusegan'}
     # The model to use. Currently support MuseGAN and BinaryMuseGAN models.
 
-    'exp_name': None,
+    'exp_name': 'binary_v1',
     # The experiment name. Also the name of the folder that will be created
     # in './exp/' and all the experiment-related files are saved in that
     # folder. None to determine automatically. The automatically-
@@ -38,11 +38,11 @@ SETUP = {
     # dictionary `SETUP`, so remember to provide the experiment name manually
     # (so that you won't overwrite a trained model).
 
-    'prefix': 'lastfm_alternative',
+    'prefix': 'DLproject',
     # Prefix for the experiment name. Useful when training with different
     # training data to avoid replacing the previous experiment outputs.
 
-    'training_data': 'lastfm_alternative_8b_phrase.npy',
+    'training_data': '/home/rakova/project/multi_musegan/musegan/training_data/binary_data/binary_train.npy',
     # Path to the training data. The training data can be loaded from a npy
     # file in the hard disk or from the shared memory using SharedArray package.
     # Note that the data will be reshaped to (-1, num_bar, num_timestep,
@@ -53,7 +53,7 @@ SETUP = {
     # Location of the training data. 'hd' to load from a npy file stored in the
     # hard disk. 'sa' to load from shared memory using SharedArray package.
 
-    'gpu': '0',
+    'gpu': '1',
     # The GPU index in os.environ['CUDA_VISIBLE_DEVICES'] to use.
 
     'preset_g': 'hybrid',
@@ -67,7 +67,7 @@ SETUP = {
     # Use a preset network architecture for the discriminator or set to None
     # and setup `CONFIG['model']['net_d']` to define the network architecture.
 
-    'pretrained_dir': None,
+    'pretrained_dir': None, #'/home/rakova/project/musegan/project_models/demo_ckpt/GAN.model-50360',
     # The directory containing the pretrained model. None to retrain the
     # model from scratch.
 
@@ -193,7 +193,7 @@ for key in ('training_data', 'training_data_location'):
 #=========================== Training Configuration ============================
 #===============================================================================
 CONFIG['train'] = {
-    'num_epoch': 20,
+    'num_epoch': 10,
     'verbose': None,
     'sample_along_training': None,
     'evaluate_along_training': None,
@@ -225,7 +225,7 @@ CONFIG['model'] = {
     },
     'optimizer': {
         # Parameters for the Adam optimizers
-        'lr': .002,
+        'lr': .001,
         'beta1': .5,
         'beta2': .9,
         'epsilon': 1e-8
@@ -235,18 +235,19 @@ CONFIG['model'] = {
     'num_bar': 4,
     'num_beat': 4,
     'num_pitch': 84,
-    'num_track': 8,
+    'num_track': 5,
     'num_timestep': 96,
     'beat_resolution': 24,
     'lowest_pitch': 24, # MIDI note number of the lowest pitch in data tensors
 
     # Tracks
-    'track_names': (
-        'Drums', 'Piano', 'Guitar', 'Bass', 'Ensemble', 'Reed', 'Synth Lead',
-        'Synth Pad'
-    ),
-    'programs': (0, 0, 24, 32, 48, 64, 80, 88),
-    'is_drums': (True, False, False, False, False, False, False, False),
+    'track_names': ('Drums', 'Piano', 'Guitar', 'Bass', 'Strings'),
+    #(
+        #'Drums', 'Piano', 'Guitar', 'Bass', 'Ensemble', 'Reed', 'Synth Lead',
+        #'Synth Pad'
+    #),
+    'programs': (0, 0, 24, 32, 48),#(0, 0, 24, 32, 48, 64, 80, 88),
+    'is_drums': (True, False, False, False, False),#(True, False, False, False, False, False, False, False),
 
     # Network architectures (define them here if not using the presets)
     'net_g': None,
@@ -262,23 +263,34 @@ CONFIG['model'] = {
     'sample_grid': (2, 8),
 
     # Metrics
+#    'metric_map': np.array([
+#         # indices of tracks for the metrics to compute
+#         [True] * 5, # empty bar rate
+#         [True] * 5, # number of pitch used
+#         [False] + [True] * 4, # qualified note rate
+#         [False] + [True] * 4, # polyphonicity
+#         [False] + [True] * 4, # in scale rate
+#         [True] + [False] * 4, # in drum pattern rate
+#         [False] + [True] * 4  # number of chroma used
+#     ], dtype=bool),
     'metric_map': np.array([
-        # indices of tracks for the metrics to compute
-        [True] * 8, # empty bar rate
-        [True] * 8, # number of pitch used
-        [False] + [True] * 7, # qualified note rate
-        [False] + [True] * 7, # polyphonicity
-        [False] + [True] * 7, # in scale rate
-        [True] + [False] * 7, # in drum pattern rate
-        [False] + [True] * 7  # number of chroma used
-    ], dtype=bool),
+                    [1, 1, 1, 1, 1],  # metric_is_empty_bar
+                    [1, 1, 1, 1, 1],  # metric_num_pitch_used
+                    [1, 0, 1, 1, 1],  # metric_too_short_note_ratio
+                    [1, 0, 1, 1, 1],  # metric_polyphonic_ratio
+                    [1, 0, 1, 1, 1],  # metric_in_scale
+                    [0, 1, 0, 0, 0],  # metric_drum_pattern
+                    [1, 0, 1, 1, 1]   # metric_num_chroma_used
+                ], dtype=bool),
+    
     'tonal_distance_pairs': [(1, 2)], # pairs to compute the tonal distance
     'scale_mask': list(map(bool, [1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1])),
     'drum_filter': np.tile([1., .1, 0., 0., 0., .1], 16),
     'tonal_matrix_coefficient': (1., 1., .5),
 
+  
     # Directories
-    'checkpoint_dir': None,
+    'checkpoint_dir': '/home/rakova/project/musegan/project_models/binary_v1_ckpt',
     'sample_dir': None,
     'eval_dir': None,
     'log_dir': None,
