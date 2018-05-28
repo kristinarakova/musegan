@@ -33,8 +33,20 @@ NET_D['chroma'] = [
     ('conv3d', (128, (1, 4, 1), (1, 4, 1)), None, 'lrelu'),     # 1 (4, 1, 1)
 ]
 
+# NET_D['merged'] = [
+#     ('conv3d', (512, (2, 1, 1), (1, 1, 1)), None, 'lrelu'),     # 0 (3, 1, 1)
+#     ('reshape', (3*512)),
+#     ('dense', 1),
+# ]
 NET_D['merged'] = [
     ('conv3d', (512, (2, 1, 1), (1, 1, 1)), None, 'lrelu'),     # 0 (3, 1, 1)
     ('reshape', (3*512)),
+]
+
+NET_D['real_fake'] = [
+    ('dense', 1),
+]
+
+NET_D['classes'] = [
     ('dense', 1),
 ]
