@@ -3,10 +3,10 @@
 NET_G = {}
 
 # Input latent sizes (NOTE: use 0 instead of None)
-NET_G['z_dim_shared'] = 32
-NET_G['z_dim_private'] = 32
-NET_G['z_dim_temporal_shared'] = 32
-NET_G['z_dim_temporal_private'] = 32
+NET_G['z_dim_shared'] = 33
+NET_G['z_dim_private'] = 33
+NET_G['z_dim_temporal_shared'] = 33
+NET_G['z_dim_temporal_private'] = 33
 NET_G['z_dim'] = (NET_G['z_dim_shared'] + NET_G['z_dim_private']
                   + NET_G['z_dim_temporal_shared']
                   + NET_G['z_dim_temporal_private'])
