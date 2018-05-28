@@ -16,6 +16,7 @@ class Model(object):
         self.scope = None
         self.global_step = None
         self.x_ = None
+        self.y = None
         self.G = None
         self.D_real = None
         self.D_fake = None
@@ -32,18 +33,24 @@ class Model(object):
         """Return the adversarial losses for the generator and the
         discriminator."""
         if self.config['gan']['type'] == 'gan':
+            class_loss = tf.losses.sigmoid_cross_entropy(
+                self.y, self.D_real.classes_proba) + tf.losses.sigmoid_cross_entropy(
+                self.y, self.D_fake.classes_proba)
             adv_loss_d = tf.losses.sigmoid_cross_entropy(
                 tf.ones_like(self.D_real.tensor_out),
-                self.D_real.tensor_out)
+                self.D_real.tensor_out) + class_loss
             adv_loss_g = tf.losses.sigmoid_cross_entropy(
                 tf.zeros_like(self.D_fake.tensor_out),
-                self.D_fake.tensor_out)
+                self.D_fake.tensor_out) + class_loss
 
         if (self.config['gan']['type'] == 'wgan'
                 or self.config['gan']['type'] == 'wgan-gp'):
+            class_loss = tf.losses.sigmoid_cross_entropy(
+                self.y, self.D_real.classes_proba) + tf.losses.sigmoid_cross_entropy(
+                self.y, self.D_fake.classes_proba)
             adv_loss_d = (tf.reduce_mean(self.D_fake.tensor_out)
-                          - tf.reduce_mean(self.D_real.tensor_out))
-            adv_loss_g = -tf.reduce_mean(self.D_fake.tensor_out)
+                          - tf.reduce_mean(self.D_real.tensor_out)) + class_loss
+            adv_loss_g = -tf.reduce_mean(self.D_fake.tensor_out) + class_loss
 
             if self.config['gan']['type'] == 'wgan-gp':
                 eps = tf.random_uniform(
@@ -64,7 +71,7 @@ class Model(object):
                 adv_loss_d += (self.config['gan']['gp_coefficient']
                                * gradient_penalty)
 
-        return adv_loss_g, adv_loss_d
+        return adv_loss_g, adv_loss_d, class_loss
 
     def get_optimizer(self):
         """Return a Adam optimizer."""
