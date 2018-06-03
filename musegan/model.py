@@ -23,11 +23,24 @@ class Model(object):
         self.components = []
         self.metrics = None
         self.saver = None
+        self.proba_real = []
+        self.proba_fake = []
 
     def init_all(self):
         """Initialize all variables in the scope."""
         print('[*] Initializing variables...')
         tf.variables_initializer(tf.global_variables(self.scope.name)).run()
+        
+    def test(self, x_test, batch_size=32):
+        def sigmoid(x):
+            return 1 / (1 +np.exp(-x))
+        sess = self.sess
+        proba = []
+        for i in range(x_test.shape[0]//batch_size):
+            x_batch = x_test[batch_size*i:(i+1)*batch_size, :, :, :, :]
+            x_test_probas = sess.run([self.D_real.classes_proba], {self.x: x_batch})
+            proba.append(x_test_probas)
+        return np.array(proba).ravel() # вероятность 0
 
     def get_adversarial_loss(self, discriminator, scope_to_reuse=None):
         """Return the adversarial losses for the generator and the
@@ -36,21 +49,32 @@ class Model(object):
             class_loss = tf.losses.sigmoid_cross_entropy(
                 self.y, self.D_real.classes_proba) + tf.losses.sigmoid_cross_entropy(
                 self.y, self.D_fake.classes_proba)
+            
+                       
             adv_loss_d = tf.losses.sigmoid_cross_entropy(
                 tf.ones_like(self.D_real.tensor_out),
-                self.D_real.tensor_out) + class_loss
+                self.D_real.tensor_out) + class_loss + 0.1*l2_loss_w 
             adv_loss_g = tf.losses.sigmoid_cross_entropy(
                 tf.zeros_like(self.D_fake.tensor_out),
-                self.D_fake.tensor_out) + class_loss
+                self.D_fake.tensor_out) + class_loss + 0.1*l2_loss_w
 
         if (self.config['gan']['type'] == 'wgan'
                 or self.config['gan']['type'] == 'wgan-gp'):
+            
+                       
+            self.proba_real.append(np.array(self.D_real.classes_proba))
+            self.proba_fake.append(np.array(self.D_fake.classes_proba))
+            
+            
             class_loss = tf.losses.sigmoid_cross_entropy(
                 self.y, self.D_real.classes_proba) + tf.losses.sigmoid_cross_entropy(
                 self.y, self.D_fake.classes_proba)
+            l2_loss_w = tf.nn.l2_loss(self.D_fake.nets['classes'].layers[0].vars[0])
+            l2_loss_b = tf.nn.l2_loss(self.D_fake.nets['classes'].layers[0].vars[1])
+            
             adv_loss_d = (tf.reduce_mean(self.D_fake.tensor_out)
-                          - tf.reduce_mean(self.D_real.tensor_out)) + class_loss
-            adv_loss_g = -tf.reduce_mean(self.D_fake.tensor_out) + class_loss
+                          - tf.reduce_mean(self.D_real.tensor_out)) + class_loss + 5*l2_loss_w
+            adv_loss_g = -tf.reduce_mean(self.D_fake.tensor_out) + class_loss 
 
             if self.config['gan']['type'] == 'wgan-gp':
                 eps = tf.random_uniform(
