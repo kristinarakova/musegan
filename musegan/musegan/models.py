@@ -2,16 +2,20 @@
 """
 import os.path
 import time
+import pickle
 import numpy as np
 import tensorflow as tf
 from musegan.model import Model
 from musegan.musegan.components import Discriminator, Generator
 from musegan.utils.metrics import Metrics
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.metrics import log_loss
 
 class GAN(Model):
     """Class that defines the first-stage (without refiner) model."""
     def __init__(self, sess, config, name='GAN', reuse=None):
         super().__init__(sess, config, name)
+        self.proba_history = []
 
         print('[*] Building GAN...')
         with tf.variable_scope(name, reuse=reuse) as scope:
@@ -98,7 +102,7 @@ class GAN(Model):
         self.print_summary()
         self.save_summary()
 
-    def train(self, x_train, y_train, train_config):
+    def train(self, x_train, y_train, train_config, x_test, y_test):
         """Train the model."""
         # Initialize sampler
         sample_idx = np.random.choice(len(x_train), self.config['batch_size'], False)
@@ -111,21 +115,38 @@ class GAN(Model):
         self.z_sample_neg = {}
         for key in self.z:
             z_random_sample = np.random.normal(size=self.z[key].get_shape())
-            self.z_sample_pos[key] = z_random_sample
-            self.z_sample_neg[key] = z_random_sample
+            self.z_sample_pos[key] = z_random_sample.copy()
+            self.z_sample_neg[key] = z_random_sample.copy()
 
-        self.z_sample_pos['shared'][:, -1] = 1
-        self.z_sample_pos['temporal_shared'][:, -1] = 1
+        #-----------------------one hot--------------------------------------------
+        self.z_sample_pos['shared'][:, -2:] = [0, 1]
+        self.z_sample_pos['temporal_shared'][:, -2:] = [0, 1]
         for track in range(self.config['num_track']):
-            self.z_sample_pos['temporal_private'][:, -1, track] = 1
-            self.z_sample_pos['private'][:, -1, track] = 1
+            self.z_sample_pos['temporal_private'][:, -2:, track] = [0, 1]
+            self.z_sample_pos['private'][:, -2:, track] = [0, 1]
 
-        self.z_sample_neg['shared'][:, -1] = 0
-        self.z_sample_neg['temporal_shared'][:, -1] = 0
+        self.z_sample_neg['shared'][:, -2:] = [1, 0]
+        self.z_sample_neg['temporal_shared'][:, -2:] = [1, 0]
         for track in range(self.config['num_track']):
-            self.z_sample_neg['temporal_private'][:, -1, track] = 0
-            self.z_sample_neg['private'][:, -1, track] = 0
+            self.z_sample_neg['temporal_private'][:, -2:, track] = [1, 0]
+            self.z_sample_neg['private'][:, -2:, track] = [1, 0]
 
+
+        #------------------------vector of zeros/ones-------------------------------  
+        #class_len - size of vector responsible to class
+        # class_len = 5
+        # self.z_sample_pos['shared'][:, -class_len:] = 1
+        # self.z_sample_pos['temporal_shared'][:, -class_len:] = 1
+        # for track in range(self.config['num_track']):
+        #     self.z_sample_pos['temporal_private'][:, -class_len:, track] = 1
+        #     self.z_sample_pos['private'][:, -class_len:, track] = 1
+
+        # self.z_sample_neg['shared'][:, -class_len:] = 0
+        # self.z_sample_neg['temporal_shared'][:, -class_len:] = 0
+        # for track in range(self.config['num_track']):
+        #     self.z_sample_neg['temporal_private'][:, -class_len:, track] = 0
+        #     self.z_sample_neg['private'][:, -class_len:, track] = 0
+        #-------------------------------------------------------------------
         for key in self.z:
             feed_dict_sample_pos[self.z[key]] = self.z_sample_pos[key]
             feed_dict_sample_neg[self.z[key]] = self.z_sample_neg[key]
@@ -139,7 +160,7 @@ class GAN(Model):
         log_batch = open(os.path.join(self.config['log_dir'], 'batch.log'), 'w')
         log_epoch = open(os.path.join(self.config['log_dir'], 'epoch.log'), 'w')
         log_step.write('# epoch, step, negative_critic_loss\n')
-        log_batch.write('# epoch, batch, time, negative_critic_loss, g_loss\n')
+        log_batch.write('# epoch, batch, time, negative_critic_loss, g_loss, class_loss, class_loss_test\n')
         log_epoch.write('# epoch, time, negative_critic_loss, g_loss\n')
 
         # Initialize counter
@@ -164,18 +185,30 @@ class GAN(Model):
 
             # Start batch iteration
             for batch in range(num_batch):
+                ohe = OneHotEncoder()
                 y_train_batch = y_train[x_random_batch[batch], None]
+                y_train_batch_ohe = ohe.fit_transform(y_train_batch).A
+                
                 feed_dict_batch = {
                     self.x: x_train[x_random_batch[batch]],
                     self.y: y_train_batch
                 }
 
                 # Add classes labels to latent vectors
-                z_random_batch['shared'][batch][:, -1] = y_train_batch.ravel()
-                z_random_batch['temporal_shared'][batch][:, -1] = y_train_batch.ravel()
+                #-----------------------one hot--------------------------------------------
+                z_random_batch['shared'][batch][:, -2:] = y_train_batch_ohe.copy()
+                z_random_batch['temporal_shared'][batch][:, -2:] = y_train_batch_ohe.copy()
                 for track in range(self.config['num_track']):
-                    z_random_batch['temporal_private'][batch][:, -1, track] = y_train_batch.ravel()
-                    z_random_batch['private'][batch][:, -1, track] = y_train_batch.ravel()
+                    z_random_batch['temporal_private'][batch][:, -2:, track] = y_train_batch_ohe.copy()
+                    z_random_batch['private'][batch][:, -2:, track] = y_train_batch_ohe.copy()
+                    
+                #------------------------vector of zeros/ones-------------------------------     
+               # z_random_batch['shared'][batch][:, -class_len:] = y_train_batch.repeat(class_len, axis=1)
+                #z_random_batch['temporal_shared'][batch][:, -class_len:] = y_train_batch.repeat(class_len, axis=1)
+                #for track in range(self.config['num_track']):
+                 #   z_random_batch['temporal_private'][batch][:, -class_len:, track] = y_train_batch.repeat(class_len, axis=1)
+                  #  z_random_batch['private'][batch][:, -class_len:, track] = y_train_batch.repeat(class_len, axis=1)
+                #---------------------------------------------------------------------------
 
                 for key in self.z:
                     feed_dict_batch[self.z[key]] = z_random_batch[key][batch]
@@ -194,40 +227,65 @@ class GAN(Model):
                     log_step.write("{}, {:14.6f}\n".format(
                         self.get_global_step_str(), -d_loss
                     ))
-
-                _, d_loss, g_loss, class_loss = self.sess.run(
-                    [self.g_step, self.d_loss, self.g_loss, self.class_loss], feed_dict_batch
+                    
+                        
+                _, d_loss, g_loss, class_loss, proba_real, proba_fake = self.sess.run(
+                    [self.g_step, self.d_loss, self.g_loss, self.class_loss, 
+                     self.D_real.classes_proba, self.D_fake.classes_proba], feed_dict_batch
                 )
                 log_step.write("{}, {:14.6f}\n".format(
                     self.get_global_step_str(), -d_loss
                 ))
-
+                
                 time_batch = time.time() - batch_start_time
-
+                
+                proba_real_test = self.test(x_test)
+                class_loss_test = tf.losses.sigmoid_cross_entropy(y_test, proba_real_test).eval()
+                
+                
+                
                 # Print iteration summary
                 if train_config['verbose']:
                     if batch < 1:
                         print("epoch |   batch   |  time  |    - D_loss    |"
-                              "     G_loss    |  CrossEntr  ")
-                    print("  {:2d}  | {:4d}/{:4d} | {:6.2f} | {:14.6f} | "
+                              "     G_loss    |  CrossEntr  | CrossEntrTest")
+                    print("  {:2d}  | {:4d}/{:4d} | {:6.2f} | {:14.6f} | {:14.6f} |"
                           "{:14.6f} | {:14.3f} |".format(epoch, batch, num_batch, time_batch,
-                                            -d_loss, g_loss, class_loss))
+                                            -d_loss, g_loss, class_loss, class_loss_test))
+                
+                
+                
+                self.proba_history.append({
+                    "y_batch": y_train_batch,
+                    "real": proba_real,
+                    "fake": proba_fake,
+                    "proba_real_test": proba_real_test,
+                    "class_loss": class_loss,
+                    "class_loss_test": class_loss_test,
+                    "step": tf.train.global_step(self.sess, self.global_step)
+                    })
+                with open(os.path.join(self.config['log_dir'], 'proba_history.pickle'), 'wb') as f:
+                    pickle.dump(self.proba_history, f)
 
-                log_batch.write("{:d}, {:d}, {:f}, {:f}, {:f}, {:f}\n".format(
-                    epoch, batch, time_batch, -d_loss, g_loss, class_loss
-                ))
-
+                log_batch.write("{:d}, {:d}, {:f}, {:f}, {:f}, {:f}, {:f}\n".format(
+                    epoch, batch, time_batch, -d_loss, g_loss, class_loss, class_loss_test))
+                #print(self.D_real.classes_proba.eval(feed_dict_batch), self.D_fake.classes_proba.eval(feed_dict_batch), y_train_batch)
+               
                 # run sampler
                 if train_config['sample_along_training']:
                     if counter%100 == 0 or (counter < 300 and counter%20 == 0):
                         self.run_sampler(self.G.tensor_out, feed_dict_sample_pos,
-                                         False, postfix='pos')
+                                         False,
+                                         postfix='pos')
                         self.run_sampler(self.G.tensor_out, feed_dict_sample_neg,
-                                         False, postfix='neg')
+                                         False, 
+                                         postfix='neg')
                         self.run_sampler(self.test_round, feed_dict_sample_neg,
-                                         (counter > 500), postfix='test_round_neg')
+                                         (counter > 500), 
+                                         postfix='test_round_neg')
                         self.run_sampler(self.test_round, feed_dict_sample_pos,
-                                         (counter > 500), postfix='test_round_pos')
+                                         (counter > 500), 
+                                         postfix='test_round_pos')
                         self.run_sampler(self.test_bernoulli, feed_dict_sample_neg,
                                          (counter > 500),
                                          postfix='test_bernoulli_neg')
