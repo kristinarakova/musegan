@@ -30,7 +30,7 @@ SETUP = {
     # {'musegan', 'bmusegan'}
     # The model to use. Currently support MuseGAN and BinaryMuseGAN models.
 
-    'exp_name': 'binary_v1',
+    'exp_name': 'one_hot_32_l2_v2',
     # The experiment name. Also the name of the folder that will be created
     # in './exp/' and all the experiment-related files are saved in that
     # folder. None to determine automatically. The automatically-
@@ -67,7 +67,7 @@ SETUP = {
     # Use a preset network architecture for the discriminator or set to None
     # and setup `CONFIG['model']['net_d']` to define the network architecture.
 
-    'pretrained_dir': None, #'/home/rakova/project/musegan/project_models/demo_ckpt/GAN.model-50360',
+    'pretrained_dir':None, # '/home/rakova/project/multi_musegan/musegan/project_models/one_hot_32_v4_ckpt/GAN.model-4013', #'/home/rakova/project/musegan/project_models/demo_ckpt/GAN.model-50360',
     # The directory containing the pretrained model. None to retrain the
     # model from scratch.
 
@@ -246,8 +246,8 @@ CONFIG['model'] = {
         #'Drums', 'Piano', 'Guitar', 'Bass', 'Ensemble', 'Reed', 'Synth Lead',
         #'Synth Pad'
     #),
-    'programs': (0, 0, 24, 32, 48),#(0, 0, 24, 32, 48, 64, 80, 88),
-    'is_drums': (True, False, False, False, False),#(True, False, False, False, False, False, False, False),
+    'programs': (0, 0, 24, 32, 48),
+    'is_drums': (True, False, False, False, False),
 
     # Network architectures (define them here if not using the presets)
     'net_g': None,
@@ -263,16 +263,6 @@ CONFIG['model'] = {
     'sample_grid': (2, 8),
 
     # Metrics
-#    'metric_map': np.array([
-#         # indices of tracks for the metrics to compute
-#         [True] * 5, # empty bar rate
-#         [True] * 5, # number of pitch used
-#         [False] + [True] * 4, # qualified note rate
-#         [False] + [True] * 4, # polyphonicity
-#         [False] + [True] * 4, # in scale rate
-#         [True] + [False] * 4, # in drum pattern rate
-#         [False] + [True] * 4  # number of chroma used
-#     ], dtype=bool),
     'metric_map': np.array([
                     [1, 1, 1, 1, 1],  # metric_is_empty_bar
                     [1, 1, 1, 1, 1],  # metric_num_pitch_used
@@ -290,7 +280,7 @@ CONFIG['model'] = {
 
   
     # Directories
-    'checkpoint_dir': '/home/rakova/project/musegan/project_models/binary_v1_ckpt',
+    'checkpoint_dir': '/home/rakova/project/multi_musegan/musegan/project_models/one_hot_32_l2_v2_ckpt',
     'sample_dir': None,
     'eval_dir': None,
     'log_dir': None,
