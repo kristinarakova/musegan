@@ -53,10 +53,10 @@ class Model(object):
                        
             adv_loss_d = tf.losses.sigmoid_cross_entropy(
                 tf.ones_like(self.D_real.tensor_out),
-                self.D_real.tensor_out) + class_loss + 0.1*l2_loss_w 
+                self.D_real.tensor_out) + class_loss 
             adv_loss_g = tf.losses.sigmoid_cross_entropy(
                 tf.zeros_like(self.D_fake.tensor_out),
-                self.D_fake.tensor_out) + class_loss + 0.1*l2_loss_w
+                self.D_fake.tensor_out) + class_loss
 
         if (self.config['gan']['type'] == 'wgan'
                 or self.config['gan']['type'] == 'wgan-gp'):
@@ -70,8 +70,7 @@ class Model(object):
                 self.y, self.D_real.classes_proba) + tf.losses.sigmoid_cross_entropy(
                 self.y, self.D_fake.classes_proba)
             l2_loss_w = tf.nn.l2_loss(self.D_fake.nets['classes'].layers[0].vars[0])
-            l2_loss_b = tf.nn.l2_loss(self.D_fake.nets['classes'].layers[0].vars[1])
-            
+                        
             adv_loss_d = (tf.reduce_mean(self.D_fake.tensor_out)
                           - tf.reduce_mean(self.D_real.tensor_out)) + class_loss + 5*l2_loss_w
             adv_loss_g = -tf.reduce_mean(self.D_fake.tensor_out) + class_loss 
